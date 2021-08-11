@@ -51,6 +51,7 @@ WebSocketsClient webSocket;
 bool clearValvePins(void *argument) {
   digitalWrite(open_pin, HIGH);
   digitalWrite(close_pin, HIGH);
+  Serial.println("command ended");
 }
 
 void hexdump(const void *mem, uint32_t len, uint8_t cols = 16) {
@@ -89,14 +90,14 @@ void handleJson(uint8_t *payload) {
   if (strcmp(type, "open") == 0) {
     digitalWrite(close_pin, LOW);
     digitalWrite(open_pin, HIGH);
-    timer.in(10, clearValvePins);
+    timer.in(10000, clearValvePins);
     state = 1;
     sendState();
   }
   else if (strcmp(type, "close") == 0) {
     digitalWrite(open_pin, LOW);
     digitalWrite(close_pin, HIGH);
-    timer.in(10, clearValvePins);
+    timer.in(10000, clearValvePins);
     state = 0;
     sendState();
   }
@@ -219,6 +220,7 @@ void setup() {
   BLEDescriptor *ssidLabel = new BLEDescriptor("2901");
   ssidLabel->setValue("SSID");
   ssidChar->addDescriptor(ssidLabel);
+  
   ssidChar->setValue(ssid);
   ssidChar->setCallbacks(new EEPROMCallbacks(ssidOffset, ssidLength));
 

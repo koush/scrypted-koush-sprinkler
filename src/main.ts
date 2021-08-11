@@ -23,6 +23,7 @@ class Valve extends ScryptedDeviceBase implements StartStop, Refresh {
     attachWebSocket(ws: WebSocket) {
         this.ws = ws;
         ws.onmessage = async (message) => {
+            this.log.i(message.data);
             const e = JSON.parse(message.data);
             this.wsEvents.emit(e.type, e);
         };
@@ -93,9 +94,10 @@ class SprinklerSystem extends ScryptedDeviceBase implements EngineIOHandler, Dev
 
                 await deviceManager.onDeviceDiscovered({
                     nativeId: id,
-                    type: ScryptedDeviceType.Valve,
+                    type: ScryptedDeviceType.Irrigation,
                     interfaces: [ScryptedInterface.StartStop, ScryptedInterface.Refresh],
                 });
+                d.log.i(`client connected ${message.data}`);
             }
         }
     }
