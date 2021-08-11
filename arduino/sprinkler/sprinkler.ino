@@ -13,7 +13,6 @@
 #include <EEPROM.h>
 #include <esp32-hal.h>
 
-const char *wsHost = "192.168.2.206";
 const char *wsUrl = "/endpoint/@scrypted/koush-sprinkler/public/";
 const int chipid = ESP.getEfuseMac();
 const uint16_t chip = (uint16_t)(chipid >> 32);
@@ -23,13 +22,17 @@ const int ssidOffset = 0;
 const int ssidLength = 32;
 const int passOffset = ssidLength;
 const int passLength = 32;
+const int hostOffset = passOffset + passLength;
+const int hostLength = 32;
 
 char ssid[ssidLength];
 char pass[passLength];
+char host[hostLength];
 
 #define WIFI_SETUP_UUID "d900a203-a982-4a49-85b8-1b5ff00cd6ea"
 #define WIFI_SSID_UUID "24edce76-d542-4b9f-b201-e76e220396df"
 #define WIFI_PASS_UUID "0b7beaf6-5a90-4209-8df0-ecc2b7bf0054"
+#define SCRYPTED_HOST_UUID "7dbd9d28-9ec8-428f-8724-a6107b132131"
 int advertising = 0;
 
 int open_pin = 32;
@@ -146,7 +149,6 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
 }
 
 void readEEPROMString(char *dest, int offset, int length) {
-  Serial.printf("reading eeprom %d %d\n", offset, length);
   for (int i = 0; i < length - 1; i++) {
     dest[i] = EEPROM.read(offset + i);
   }
@@ -157,11 +159,11 @@ void readEEPROMString(char *dest, int offset, int length) {
 void readEEPROM() {
   readEEPROMString(ssid, ssidOffset, sizeof(ssid));
   readEEPROMString(pass, passOffset, sizeof(pass));
+  readEEPROMString(host, hostOffset, sizeof(host));
   WiFiMulti.addAP(ssid, pass);
 
-  Serial.println("ssid:");
-  Serial.println(ssid);
-  Serial.println(pass);
+  webSocket.disconnect();
+  webSocket.begin(host, 10080, wsUrl);
 }
 
 class EEPROMCallbacks : public BLECharacteristicCallbacks {
@@ -174,7 +176,6 @@ class EEPROMCallbacks : public BLECharacteristicCallbacks {
     }
     void onWrite(BLECharacteristic* pCharacteristic) override {
       auto value = pCharacteristic->getValue();
-      Serial.println(value.c_str());
       for (int i = 0; i < value.length(); i++) {
         EEPROM.write(offset + i, value[i]);
       }
@@ -204,7 +205,6 @@ void setup() {
   //  delay(1000);
   //  digitalWrite(led_pin, LOW);
 
-  webSocket.begin(wsHost, 10080, wsUrl);
   webSocket.onEvent(webSocketEvent);
   webSocket.setReconnectInterval(5000);
 
@@ -233,6 +233,18 @@ void setup() {
   passChar->setValue(pass);
   passChar->setCallbacks(new EEPROMCallbacks(passOffset, passLength));
 
+
+  BLECharacteristic *hostChar = pService->createCharacteristic(
+                                  SCRYPTED_HOST_UUID,
+                                  BLECharacteristic::PROPERTY_READ |
+                                  BLECharacteristic::PROPERTY_WRITE
+                                );
+  BLEDescriptor *hostLabel = new BLEDescriptor("2901");
+  hostLabel->setValue("Host");
+  hostChar->addDescriptor(hostLabel);
+  hostChar->setValue(host);
+  hostChar->setCallbacks(new EEPROMCallbacks(hostOffset, hostLength));
+
   pService->start();
 
   BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
@@ -243,18 +255,32 @@ void setup() {
 }
 
 void loop() {
+  int needAdvertising = 0;
   if (WiFiMulti.run(5000) != WL_CONNECTED) {
-    Serial.println("connecting to wifi");
-    if (!advertising) {
-      advertising = 1;
-      BLEDevice::startAdvertising();
-    }
-  }
-  else if (advertising) {
-    advertising = 0;
-    BLEDevice::stopAdvertising();
+    Serial.printf("connecting to wifi %s %s %s\n", ssid, pass, host);
+    needAdvertising = 1;
+    delay(1000);
   }
 
   webSocket.loop();
+  if (!webSocket.isConnected()) {
+    needAdvertising = 1;
+  }
+
+  if (!advertising && needAdvertising) {
+    advertising = 1;
+    BLEDevice::startAdvertising();
+    Serial.println("Start Advertising");
+  }
+  else if (advertising && !needAdvertising) {
+    advertising = 0;
+    BLEDevice::stopAdvertising();
+    Serial.println("Stop Advertising");
+
+    digitalWrite(led_pin, HIGH);
+    delay(1000);
+    digitalWrite(led_pin, LOW);
+  }
+
   timer.tick();
 }
