@@ -52,6 +52,7 @@ bool clearValvePins(void *argument) {
   digitalWrite(open_pin, HIGH);
   digitalWrite(close_pin, HIGH);
   Serial.println("command ended");
+  sendState();
 }
 
 void hexdump(const void *mem, uint32_t len, uint8_t cols = 16) {
@@ -71,9 +72,12 @@ void sendState() {
   char json[64];
   sprintf(json, "{\"type\":\"state\",\"state\":\"%s\"}", state ? "open" : "close");
   webSocket.sendTXT(json);
+  delay(1000);
 }
 
 void handleJson(uint8_t *payload) {
+  Serial.printf("webSocket data %s\n", payload);
+
   StaticJsonDocument<512> doc;
   DeserializationError error = deserializeJson(doc, payload);
   if (error) {
@@ -88,18 +92,18 @@ void handleJson(uint8_t *payload) {
   }
 
   if (strcmp(type, "open") == 0) {
+    state = 1;
+    sendState();
     digitalWrite(close_pin, LOW);
     digitalWrite(open_pin, HIGH);
     timer.in(10000, clearValvePins);
-    state = 1;
-    sendState();
   }
   else if (strcmp(type, "close") == 0) {
+    state = 0;
+    sendState();
     digitalWrite(open_pin, LOW);
     digitalWrite(close_pin, HIGH);
     timer.in(10000, clearValvePins);
-    state = 0;
-    sendState();
   }
   else if (strcmp(type, "state") == 0) {
     sendState();
@@ -107,7 +111,7 @@ void handleJson(uint8_t *payload) {
 }
 
 void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
-
+  Serial.printf("webSocket event %d\n", type);
   switch (type) {
     case WStype_DISCONNECTED:
       Serial.printf("[WSc] Disconnected!\n");
@@ -156,6 +160,14 @@ void readEEPROMString(char *dest, int offset, int length) {
   dest[length - 1] = '\0';
 }
 
+void connectWebSocket() {
+  //webSocket.disconnect();
+  webSocket.begin(host, 10080, wsUrl);
+
+  webSocket.onEvent(webSocketEvent);
+  webSocket.setReconnectInterval(5000);
+}
+
 
 void readEEPROM() {
   readEEPROMString(ssid, ssidOffset, sizeof(ssid));
@@ -163,8 +175,7 @@ void readEEPROM() {
   readEEPROMString(host, hostOffset, sizeof(host));
   WiFiMulti.addAP(ssid, pass);
 
-  webSocket.disconnect();
-  webSocket.begin(host, 10080, wsUrl);
+  connectWebSocket();
 }
 
 class EEPROMCallbacks : public BLECharacteristicCallbacks {
@@ -201,14 +212,6 @@ void setup() {
 
   readEEPROM();
 
-  //  Serial.println("connected to wifi");
-  //  digitalWrite(led_pin, HIGH);
-  //  delay(1000);
-  //  digitalWrite(led_pin, LOW);
-
-  webSocket.onEvent(webSocketEvent);
-  webSocket.setReconnectInterval(5000);
-
   BLEDevice::init("Sprinkler Setup");
   BLEServer *pServer = BLEDevice::createServer();
   BLEService *pService = pServer->createService(WIFI_SETUP_UUID);
@@ -220,7 +223,7 @@ void setup() {
   BLEDescriptor *ssidLabel = new BLEDescriptor("2901");
   ssidLabel->setValue("SSID");
   ssidChar->addDescriptor(ssidLabel);
-  
+
   ssidChar->setValue(ssid);
   ssidChar->setCallbacks(new EEPROMCallbacks(ssidOffset, ssidLength));
 
