@@ -1,10 +1,7 @@
-// https://developer.scrypted.app/#getting-started
-// package.json contains the metadata (name, interfaces) about this device
-// under the "scrypted" key.
 import { DeviceProvider, EngineIOHandler, HttpRequest, HttpRequestHandler, OnOff, Refresh, ScryptedDeviceBase, ScryptedDeviceType, ScryptedInterface, StartStop } from '@scrypted/sdk';
 import sdk from '@scrypted/sdk';
-import { once, Server } from "ws";
-import { EventEmitter } from 'stream';
+import { Server } from "ws";
+import { EventEmitter } from 'events';
 const { log, deviceManager } = sdk;
 
 class Valve extends ScryptedDeviceBase implements StartStop, Refresh {
